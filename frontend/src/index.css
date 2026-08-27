@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #030712;
+  --color-surface-dim: #030712;
+  --color-surface-bright: #1e293b;
+  --color-surface-container-lowest: #020617;
+  --color-surface-container-low: #090d16;
+  --color-surface-container: #0f172a;
+  --color-surface-container-high: #1e293b;
+  --color-surface-container-highest: #334155;
+  --color-surface-variant: #1e293b;
+  
+  --color-on-surface: #f1f5f9;
+  --color-on-surface-variant: #94a3b8;
+  --color-outline: #64748b;
+  --color-outline-variant: #334155;
+  
+  --color-primary: #38bdf8;
+  --color-primary-container: #0284c7;
+  --color-primary-fixed: #7dd3fc;
+  --color-primary-fixed-dim: #0ea5e9;
+  --color-on-primary: #082f49;
+  --color-on-primary-container: #e0f2fe;
+  --color-inverse-primary: #0369a1;
+  
+  --color-secondary: #cbd5e1;
+  --color-secondary-container: #334155;
+  --color-on-secondary: #0f172a;
+  --color-on-secondary-container: #f8fafc;
+  --color-secondary-fixed: #e2e8f0;
+  --color-secondary-fixed-dim: #94a3b8;
+  
+  --color-tertiary: #fde047;
+  --color-tertiary-container: #eab308;
+  --color-on-tertiary: #422006;
+  --color-on-tertiary-container: #fef08a;
+  --color-tertiary-fixed: #fef9c3;
+  --color-tertiary-fixed-dim: #facc15;
+  
+  --color-error: #f43f5e;
+  --color-error-container: #881337;
+  --color-on-error: #4c0519;
+  --color-on-error-container: #ffe4e6;
+  
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --spacing-gutter: 16px;
+  --spacing-margin-page: 24px;
+  --spacing-panel-padding: 16px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+  --spacing-stack-lg: 24px;
+}
+
+@layer base {
+  html, body {
+    background-color: #030712;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Scrollbar hiding */
+.hide-scrollbar::-webkit-scrollbar,
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area insets */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 8px);
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+}
+
+/* Pulse radar ring */
+@keyframes radar-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  80%, 100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.animate-radar {
+  animation: radar-ping 2.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+/* Sound Waveform animation */
+@keyframes wave-bounce {
+  0%, 100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

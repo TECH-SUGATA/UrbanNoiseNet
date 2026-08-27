@@ -1,0 +1,6 @@
+{
+  "name": "UrbanNoiseNet",
+  "description": "Smart city acoustic intelligence and civic governance platform connecting to real-time FastAPI endpoints with live microphone capture, geofenced zone monitoring, automated e-challans, and emergency dispatch.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
