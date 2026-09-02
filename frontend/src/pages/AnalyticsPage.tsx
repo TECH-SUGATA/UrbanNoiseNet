@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { AnalyticsTimeseriesData, HeatmapCell, GeoZone } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { getZoneStressIndex } from '../utils/noiseStress';
 
 export const AnalyticsPage: React.FC = () => {
   const { zones, selectedZone, setSelectedZone, getTimeseries, getHeatmap } = useAppData();
@@ -15,6 +16,10 @@ export const AnalyticsPage: React.FC = () => {
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
   const [selectedCell, setSelectedCell] = useState<HeatmapCell | null>(null);
   const [exportToast, setExportToast] = useState<string | null>(null);
+  const zoneStress = zones.map((zone) => ({ zone, index: getZoneStressIndex(zone) }));
+  const averageStress = zoneStress.length
+    ? zoneStress.reduce((sum, item) => sum + item.index.score, 0) / zoneStress.length
+    : 0;
 
   // Sync selectedZone from context
   useEffect(() => {
@@ -131,6 +136,57 @@ export const AnalyticsPage: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* NSI Exposure Analysis */}
+      <section className="bg-[#090d16]/90 border border-emerald-500/25 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-emerald-400 text-lg">psychology</span>
+              <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">Noise Stress Index · Exposure Analysis</h3>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Stress-risk estimate from normalized level, exposure duration, time of day, and source severity.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold font-mono text-emerald-300">{Math.round(averageStress * 100)}%</div>
+            <div className="text-[10px] uppercase font-mono text-slate-500">Network average risk</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+          {[
+            ['L', 'Noise level', 0.45, 'text-cyan-300'],
+            ['E', 'Exposure duration', 0.25, 'text-amber-300'],
+            ['D', 'Time / environment', 0.15, 'text-violet-300'],
+            ['S', 'Source severity', 0.15, 'text-rose-300'],
+          ].map(([code, label, weight, color]) => (
+            <div key={code as string} className="rounded-xl bg-black/30 border border-white/5 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-bold font-mono ${color}`}>{code}</span>
+                <span className="text-[10px] font-mono text-slate-500">{(Number(weight) * 100).toFixed(0)}% weight</span>
+              </div>
+              <div className="text-[11px] text-slate-300 mt-1">{label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-2">
+          {zoneStress.map(({ zone, index }) => (
+            <div key={zone.id} className="grid grid-cols-[minmax(0,1fr)_5rem_7rem] items-center gap-3 text-xs">
+              <div className="min-w-0">
+                <div className="flex justify-between gap-2 text-slate-300"><span className="truncate">{zone.name}</span><span className="font-mono text-slate-500">{zone.currentDb} dBA</span></div>
+                <div className="h-1.5 mt-1 rounded-full bg-slate-800 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${index.score * 100}%`, backgroundColor: index.color }} /></div>
+              </div>
+              <span className="font-mono text-right" style={{ color: index.color }}>{Math.round(index.score * 100)}%</span>
+              <span className="text-[10px] font-mono uppercase text-right" style={{ color: index.color }}>{index.level}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 border-t border-white/5 pt-3">
+          <span className="material-symbols-outlined text-xs text-emerald-400">verified_user</span>
+          Risk estimate only; it is not a clinical or cortisol measurement.
+        </div>
+      </section>
 
       {/* Chart 1: Time-Series Line Visualizer (Predicted vs Actual) */}
       <div className="bg-[#090d16]/90 border border-cyan-500/20 rounded-2xl p-5 shadow-xl space-y-4">

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { TabType, LiveEvent, AcousticNode } from '../../types';
 import { ACOUSTIC_NODES } from '../../data/mockData';
 import { playAcousticSound } from '../../utils/audioSynth';
+import { useAppData } from '../../context/AppDataContext';
+import { getQuietRoute, getZoneStressIndex } from '../../utils/noiseStress';
 
 interface DashboardTabProps {
   onNavigate: (tab: TabType) => void;
@@ -16,10 +18,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 }) => {
   const [isBottomPanelExpanded, setIsBottomPanelExpanded] = useState(false);
   const [showWhoRisk, setShowWhoRisk] = useState(true);
+  const [showQuietRoute, setShowQuietRoute] = useState(false);
   const [activeLayer, setActiveLayer] = useState<'heat' | 'contours' | 'sensors'>('heat');
   const [selectedNode, setSelectedNode] = useState<AcousticNode | null>(null);
   const [playingEventId, setPlayingEventId] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const { zones } = useAppData();
+  const zoneScores = zones.map((zone) => ({ zone, index: getZoneStressIndex(zone) }));
+  const averageNsi = zoneScores.length
+    ? zoneScores.reduce((sum, item) => sum + item.index.score, 0) / zoneScores.length
+    : 0;
+  const averageLevel = getZoneStressIndex({ ...zones[0], currentDb: averageNsi * 65 + 40 }).level;
+  const quietRoute = getQuietRoute(zones);
 
   const handlePlaySound = (event: LiveEvent, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -72,7 +82,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
           {/* Acoustic Zone Polygons */}
           <polygon
-            points="15%,25% 42%,18% 48%,42% 20%,48%"
+            points="15,25 42,18 48,42 20,48"
             fill="rgba(56, 189, 248, 0.12)"
             stroke="#38bdf8"
             strokeWidth="1.5"
@@ -82,7 +92,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           />
 
           <polygon
-            points="54%,48% 88%,42% 92%,78% 58%,82%"
+            points="54,48 88,42 92,78 58,82"
             fill="rgba(245, 158, 11, 0.14)"
             stroke="#f59e0b"
             strokeWidth="1.5"
@@ -244,6 +254,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </button>
 
         <button
+          onClick={() => setShowQuietRoute(!showQuietRoute)}
+          className={`w-10 h-10 rounded-full backdrop-blur-md shadow-lg flex items-center justify-center transition-all border active:scale-90 ${
+            showQuietRoute
+              ? 'bg-emerald-400 text-slate-950 border-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.4)]'
+              : 'bg-[#090d16]/90 text-slate-200 hover:text-emerald-400 border-white/10'
+          }`}
+          title="Show quiet route recommendation"
+        >
+          <span className="material-symbols-outlined text-lg">alt_route</span>
+        </button>
+
+        <button
           onClick={handleLocationRecenter}
           className="w-10 h-10 rounded-full bg-[#090d16]/90 backdrop-blur-md shadow-lg flex items-center justify-center text-slate-200 hover:text-cyan-400 transition-all border border-white/10 active:scale-90"
           title="Recenter GPS Coordinates"
@@ -260,12 +282,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </button>
       </div>
 
-      {/* WHO Risk Score Overlay (Collapsible on top right) */}
+      {/* Noise Stress Index and quiet-route overlays */}
       {showWhoRisk && (
         <div className="hidden sm:flex absolute top-40 right-16 z-20 w-64 bg-[#090d16]/90 backdrop-blur-xl rounded-xl p-4 shadow-2xl border border-cyan-500/20 flex-col gap-2 animate-in fade-in duration-300">
           <div className="flex justify-between items-center">
             <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-              WHO Risk Score
+              Noise Stress Index
             </span>
             <button
               onClick={() => setShowWhoRisk(false)}
@@ -276,9 +298,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
           <div className="flex items-end gap-2">
             <span className="text-3xl font-bold text-amber-400 font-mono leading-none">
-              7.2
+              {averageNsi.toFixed(2)}
             </span>
-            <span className="text-xs text-slate-400 mb-0.5">/ 10 Moderate</span>
+            <span className="text-xs text-slate-400 mb-0.5">/ 1.00 {averageLevel}</span>
           </div>
 
           {/* Mini Persistence Graph */}
@@ -303,9 +325,40 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </svg>
           </div>
           <div className="flex justify-between text-[10px] font-mono text-slate-500">
-            <span>12h ago</span>
-            <span className="text-amber-400">Peak 8.4</span>
+            <span>Weighted model</span>
+            <span style={{ color: zoneScores[0]?.index.color || '#fbbf24' }}>45% L • 25% E</span>
             <span>Now</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1 text-[9px] font-mono text-slate-500 text-center border-t border-white/5 pt-2">
+            <span>L<br /><b className="text-slate-300">level</b></span>
+            <span>E<br /><b className="text-slate-300">exposure</b></span>
+            <span>D<br /><b className="text-slate-300">time</b></span>
+            <span>S<br /><b className="text-slate-300">source</b></span>
+          </div>
+        </div>
+      )}
+
+      {showQuietRoute && (
+        <div className="hidden sm:flex absolute top-[27rem] right-16 z-20 w-64 bg-[#090d16]/95 backdrop-blur-xl rounded-xl p-4 shadow-2xl border border-emerald-500/30 flex-col gap-2 animate-in fade-in duration-300">
+          <div className="flex items-center gap-2 text-emerald-300">
+            <span className="material-symbols-outlined text-base">alt_route</span>
+            <span className="text-[11px] font-mono uppercase tracking-wider">Quiet Route</span>
+          </div>
+          <p className="text-[10px] text-slate-400">Lowest current stress-risk path through monitored zones.</p>
+          <div className="space-y-1.5">
+            {quietRoute.map((zone, position) => {
+              const index = getZoneStressIndex(zone);
+              return (
+                <button
+                  key={zone.id}
+                  onClick={() => onNavigate('zones')}
+                  className="w-full flex items-center justify-between rounded-lg bg-black/30 px-2.5 py-2 text-left hover:bg-emerald-950/40 transition-colors"
+                >
+                  <span className="text-[11px] text-slate-200"><b className="text-emerald-400 mr-2">0{position + 1}</b>{zone.name}</span>
+                  <span className="text-[10px] font-mono" style={{ color: index.color }}>{Math.round(index.score * 100)}%</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
