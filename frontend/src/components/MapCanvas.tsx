@@ -1,8 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { AcousticNode, GeoZone, PolygonPoint } from '../types';
 import { ACOUSTIC_NODES } from '../data/mockData';
 import { useNavigate } from 'react-router-dom';
+import { getZoneStressIndex } from '../utils/noiseStress';
+
+const GOOGLE_MAPS_API_KEY =
+  (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_GOOGLE_MAPS_API_KEY) || '';
 
 interface MapCanvasProps {
   onSelectNode?: (node: AcousticNode) => void;
@@ -27,6 +31,119 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [drawnPoints, setDrawnPoints] = useState<PolygonPoint[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const googleMapRef = useRef<HTMLDivElement>(null);
+  const googleInstanceRef = useRef<any>(null);
+  const googleOverlaysRef = useRef<any[]>([]);
+  const [googleMapReady, setGoogleMapReady] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) return;
+    let cancelled = false;
+
+    const initializeMap = () => {
+      const google = (window as any).google;
+      if (cancelled || !google?.maps || !googleMapRef.current) return;
+      const initialCenter = { lat: 30.7333, lng: 76.7794 };
+      googleInstanceRef.current = new google.maps.Map(googleMapRef.current, {
+        center: initialCenter,
+        zoom: 12,
+        mapTypeId: mapLayer === 'satellite' ? 'satellite' : mapLayer === 'street' ? 'roadmap' : 'roadmap',
+        disableDefaultUI: true,
+        zoomControl: true,
+        styles: mapLayer === 'dark' ? [{ elementType: 'geometry', stylers: [{ color: '#101827' }] }, { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] }] : undefined,
+      });
+      setGoogleMapReady(true);
+    };
+
+    if ((window as any).google?.maps) {
+      initializeMap();
+    } else {
+      const existingScript = document.querySelector('script[data-google-maps]');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=visualization`;
+        script.async = true;
+        script.defer = true;
+        script.dataset.googleMaps = 'true';
+        script.onload = initializeMap;
+        document.head.appendChild(script);
+      } else {
+        existingScript.addEventListener('load', initializeMap);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      googleOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+      googleOverlaysRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!googleMapReady || !googleInstanceRef.current) return;
+    googleInstanceRef.current.setMapTypeId(mapLayer === 'satellite' ? 'satellite' : 'roadmap');
+  }, [googleMapReady, mapLayer]);
+
+  useEffect(() => {
+    if (!googleMapReady || !googleInstanceRef.current) return;
+    const google = (window as any).google;
+    googleOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+    googleOverlaysRef.current = [];
+
+    zones.forEach((zone, zonePosition) => {
+      const stressIndex = getZoneStressIndex(zone);
+      const zoneCenters = [
+        { lat: 30.7333, lng: 76.7794 },
+        { lat: 30.7412, lng: 76.7925 },
+        { lat: 30.7198, lng: 76.8102 },
+        { lat: 30.7046, lng: 76.801 },
+        { lat: 30.726, lng: 76.768 },
+      ];
+      const center = zoneCenters[zonePosition % zoneCenters.length];
+      const circle = new google.maps.Circle({
+        map: googleInstanceRef.current,
+        center,
+        radius: 650,
+        fillColor: stressIndex.color,
+        fillOpacity: showHeatmap ? 0.28 : 0.08,
+        strokeColor: stressIndex.color,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+      });
+      const marker = new google.maps.Marker({
+        map: googleInstanceRef.current,
+        position: center,
+        title: `${zone.name}: ${Math.round(stressIndex.score * 100)}% stress risk`,
+        label: { text: `${Math.round(stressIndex.score * 100)}%`, color: '#ffffff', fontWeight: '700' },
+      });
+      googleOverlaysRef.current.push(circle, marker);
+    });
+
+    if (userLocation) {
+      const marker = new google.maps.Marker({
+        map: googleInstanceRef.current,
+        position: userLocation,
+        title: 'Your current location',
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#22d3ee', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+      });
+      googleOverlaysRef.current.push(marker);
+    }
+  }, [googleMapReady, zones, showHeatmap, userLocation]);
+
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords }) => {
+        const nextLocation = { lat: coords.latitude, lng: coords.longitude };
+        setUserLocation(nextLocation);
+        if (googleInstanceRef.current) googleInstanceRef.current.setCenter(nextLocation);
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   // Click on map to add vertex in drawing mode
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -53,7 +170,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   // Convert points array to SVG polygon string
   const pointsToSvgString = (points: PolygonPoint[]) => {
-    return points.map((p) => `${p.x}%,${p.y}%`).join(' ');
+    return points.map((p) => `${p.x},${p.y}`).join(' ');
   };
 
   return (
@@ -64,9 +181,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         isDrawingMode ? 'cursor-crosshair' : 'cursor-default'
       }`}
     >
+      {GOOGLE_MAPS_API_KEY && <div ref={googleMapRef} className={`absolute inset-0 ${googleMapReady ? 'z-0' : 'hidden'}`} />}
       {/* Background Map Imagery based on selected layer */}
       <div
-        className="absolute inset-0 bg-cover bg-center transition-all duration-500"
+        className={`absolute inset-0 bg-cover bg-center transition-all duration-500 ${googleMapReady ? 'hidden' : ''}`}
         style={{
           backgroundImage:
             mapLayer === 'satellite'
@@ -79,7 +197,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       />
 
       {/* Street Grid Overlay Lines for Dark & Street views */}
-      {mapLayer !== 'satellite' && (
+      {!googleMapReady && mapLayer !== 'satellite' && (
         <div
           className="absolute inset-0 pointer-events-none opacity-20"
           style={{
@@ -90,7 +208,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       )}
 
       {/* Acoustic Heatmap Glow Overlay */}
-      {showHeatmap && (
+      {!googleMapReady && showHeatmap && (
         <div className="absolute inset-0 pointer-events-none opacity-40 mix-blend-screen">
           <div className="absolute top-[28%] left-[32%] w-64 h-64 rounded-full bg-gradient-to-r from-cyan-500/50 to-transparent blur-3xl" />
           <div className="absolute top-[50%] left-[62%] w-72 h-72 rounded-full bg-gradient-to-r from-rose-500/60 to-transparent blur-3xl animate-pulse" />
@@ -99,7 +217,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       )}
 
       {/* SVG Polygons & Radar Grid */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+      {!googleMapReady && <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
         {/* Render Saved Zones Polygons */}
         {showZones &&
           zones.map((zone, idx) => {
@@ -142,7 +260,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             />
           </g>
         )}
-      </svg>
+      </svg>}
 
       {/* Drawn Vertices Handles in Drawing Mode */}
       {isDrawingMode &&
@@ -155,7 +273,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         ))}
 
       {/* Sensor Node Pins */}
-      {ACOUSTIC_NODES.map((node, index) => {
+      {!googleMapReady && ACOUSTIC_NODES.map((node, index) => {
         const positions = [
           { top: '35%', left: '32%' },
           { top: '56%', left: '68%' },

@@ -262,6 +262,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const interval = setInterval(() => {
       fetchEvents();
+      fetchZones();
     }, 8000);
 
     return () => clearInterval(interval);
